@@ -1,6 +1,6 @@
 # Plan de pruebas de seguridad — MVP Buscar pareja Bogotá
 
-Estado: plan preparado; **no ejecutado contra una base de datos**.
+Estado: ejecutado en PostgreSQL 16 aislado mediante CI; **pendiente contrastar contra la base Supabase activa**.
 Alcance: validación previa a habilitar usuarios reales.
 
 ## Preparación
