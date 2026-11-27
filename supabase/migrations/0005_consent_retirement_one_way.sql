@@ -7,7 +7,7 @@ begin;
 create or replace function private.guard_consent_retirement()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 begin
