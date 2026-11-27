@@ -105,6 +105,21 @@ describe("Hardening SQL · roles y cola", () => {
     expect(sql).toMatch(/security definer set search_path = ''/i);
   });
 
+
+  it("limits direct profile writes to member-editable columns", () => {
+    const sql = migration("0010_restrict_profile_column_privileges.sql");
+    expect(sql).toMatch(/revoke insert, update on table public\.profiles from public, anon, authenticated/i);
+    expect(sql).toMatch(/grant insert \(user_id, alias, ciudad, rango_edad, estado\)/i);
+    expect(sql).toMatch(/grant update \(alias, ciudad, rango_edad\)/i);
+  });
+
+  it("prevents Director self-edits and excludes their own profile from the queue", () => {
+    const guard = migration("0009_allow_valid_profile_submission.sql");
+    const queue = migration("0011_exclude_director_from_own_queue.sql");
+    expect(guard).toMatch(/v_is_director[\s\S]*?auth\.uid\(\)[\s\S]*?old\.user_id[\s\S]*?v_personal_changed/i);
+    expect(queue).toMatch(/p\.user_id <> \(select auth\.uid\(\)\)/i);
+  });
+
   it("keeps technical admin separate from personal profile access", () => {
     const sql = migration("0001_mvp_profiles_consents.sql");
     expect(sql).toMatch(/create type public\.staff_role as enum \('director','admin_tecnico'\)/i);
