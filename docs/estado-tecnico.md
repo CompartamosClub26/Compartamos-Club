@@ -100,6 +100,6 @@ Esta huella coincide con las políticas base de 0001 y no con el endurecimiento 
 
 La base activa no debe recibir miembros todavía. La política amplia de intereses/objetivos permite cambios propios sin comprobar el estado del perfil; el trigger de perfil observado tampoco bloquea cambios de datos personales durante la revisión. Además, no existe un Director asignado para operar la cola de moderación.
 
-Las migraciones 0002–0011 de la rama de integración siguen sin aplicarse a Supabase activo. La ausencia de un historial `supabase_migrations` impide afirmar el número exacto de migración aplicada; la conclusión anterior se basa en la huella efectiva de políticas y funciones observada, no en asumir el historial.
+La huella observada demuestra que los endurecimientos de 0002 y 0003, y los cambios de 0005–0009 y 0011, no están activos en Supabase. La migración 0004 no puede distinguirse solo por el cuerpo de `enviar_revision`, que conserva el mismo comportamiento observable. La aplicación de 0010 requiere confirmar privilegios detallados de columna, consulta que quedó bloqueada. La ausencia de un historial `supabase_migrations` impide afirmar una secuencia exacta; estas conclusiones se basan en las políticas, funciones y triggers observados, no en asumir el historial.
 
 La consulta adicional quedó bloqueada por el límite temporal del plan gratuito. Quedan pendientes privilegios detallados de tabla/columna, definición completa de ACL y una segunda verificación de triggers/policies cuando se restablezca el acceso. No se modificó la base activa.
