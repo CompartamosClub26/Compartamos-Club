@@ -45,6 +45,27 @@ describe("Hardening SQL · estados del perfil", () => {
     expect(sql).toMatch(/transición de estado no permitida/i);
   });
 
+
+  it("allows a member to submit only a complete draft or rejected profile", () => {
+    const sql = migration("0009_allow_valid_profile_submission.sql");
+    expect(sql).toMatch(/old\.estado not in \('borrador','rechazado'\) or new\.estado <> 'pendiente'/i);
+    expect(sql).toMatch(/from public\.profile_interests i where i\.user_id = old\.user_id/i);
+    expect(sql).toMatch(/g\.objetivo = 'pareja'/i);
+    expect(sql).toMatch(/count\(distinct cd\.tipo\)/i);
+    expect(sql).toMatch(/new\.enviado_en := now\(\)/i);
+    expect(sql).toMatch(/new\.motivo_estado := null/i);
+    expect(sql).toMatch(/new\.revisado_por := null/i);
+  });
+
+  it("keeps review, verification, ownership and creation fields protected", () => {
+    const sql = migration("0009_allow_valid_profile_submission.sql");
+    expect(sql).toMatch(/new\.creado_en is distinct from old\.creado_en/i);
+    expect(sql).toMatch(/new\.telefono_verificado_en is distinct from old\.telefono_verificado_en/i);
+    expect(sql).toMatch(/new\.metodo_verificacion is distinct from old\.metodo_verificacion/i);
+    expect(sql).toMatch(/new\.user_id is distinct from old\.user_id/i);
+    expect(sql).toMatch(/old\.estado in \('pendiente','suspendido','baja_solicitada'\)/i);
+  });
+
   it("requires phone verification and all four current consents before approval", () => {
     const sql = migration("0001_mvp_profiles_consents.sql");
     expect(sql).toMatch(/p\.telefono_verificado_en is not null/i);
