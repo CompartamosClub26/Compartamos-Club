@@ -47,7 +47,7 @@ describe("Hardening SQL · estados del perfil", () => {
     const sql = migration("0001_mvp_profiles_consents.sql");
     expect(sql).toMatch(/p\.telefono_verificado_en is not null/i);
     expect(sql).toMatch(/count\(distinct cd\.tipo\)/i);
-    expect(sql).toMatch(/<> 4/i);
+    expect(sql).toMatch(/\)\s*=\s*4/i);
   });
 
   it("allows resubmission only from draft or rejected profiles", () => {
