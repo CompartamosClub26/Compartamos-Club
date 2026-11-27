@@ -138,11 +138,11 @@ select public.crear_perfil(
 );
 select public.enviar_revision();
 select public.test_expect_error(
-  $select public.resolver_revision('33333333-3333-4333-8333-333333333333', 'aprobado', null)$,
+  $$select public.resolver_revision('33333333-3333-4333-8333-333333333333', 'aprobado', null)$$,
   'Acceso denegado'
 );
 select public.test_expect_error(
-  $update public.profiles set estado = 'aprobado' where user_id = '33333333-3333-4333-8333-333333333333'$,
+  $$update public.profiles set estado = 'aprobado' where user_id = '33333333-3333-4333-8333-333333333333'$$,
   'permission denied'
 );
 select public.test_assert_true(
