@@ -179,7 +179,7 @@ $$;
 
 create or replace function public.enviar_revision()
 returns void language plpgsql security definer set search_path = ''
-as $
+as $$
 declare v_user uuid := (select auth.uid());
 begin
   if v_user is null then raise exception 'Autenticación requerida'; end if;
@@ -203,7 +203,7 @@ begin
   update public.profiles set estado = 'pendiente', enviado_en = now(), motivo_estado = null
   where user_id = v_user;
 end;
-$;
+$$;
 
 create or replace function public.marcar_telefono_verificado(p_user_id uuid, p_metodo public.verification_method)
 returns void language plpgsql security definer set search_path = ''
