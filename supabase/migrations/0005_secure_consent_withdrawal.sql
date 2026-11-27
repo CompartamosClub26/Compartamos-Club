@@ -4,6 +4,8 @@ begin;
 
 drop policy if exists consents_self_update on public.user_consents;
 revoke update on public.user_consents from public, anon, authenticated;
+-- También revoca el permiso de columna concedido por la migración 0003.
+revoke update (retirado_en) on public.user_consents from public, anon, authenticated;
 
 create or replace function public.retirar_consentimiento(p_consent_id uuid)
 returns void
