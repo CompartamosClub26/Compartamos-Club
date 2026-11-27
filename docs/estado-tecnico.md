@@ -2,36 +2,55 @@
 
 Actualizado: 27-11-2026
 
-## Trabajo portable incorporado
+## Alcance aprobado
+Piloto exclusivo: Buscar pareja en Bogotá. No incluye feed, grupos, pagos, publicación pública, emparejamiento automático ni acceso público a perfiles.
+
+## Código portable en GitHub
+Repositorio: `CompartamosClub26/Compartamos-Club`.
+Rama de trabajo: `work/audit-and-ci-hardening`.
+Solicitud de integración: PR #1, abierta y en borrador. No está integrada en `main`.
+
+Módulos preparados:
 - Cliente Supabase de navegador: `src/lib/supabase.ts`.
-- Autenticación por código de un solo uso enviado al correo: `src/lib/auth.ts`.
-- Componente accesible de acceso por correo y OTP: `src/components/EmailCodeForm.tsx`.
-- Validación y alta transaccional del perfil de pareja Bogotá: `src/lib/perfil.ts`.
-- Callback y lectura de sesión: `src/lib/auth-callback.ts`.
-- Migración base: `supabase/migrations/0001_mvp_profiles_consents.sql`.
-- Migración correctiva: `supabase/migrations/0002_profile_insert_hardening.sql`.
-- Pruebas de validación de perfil: `tests/perfil.test.ts`.
+- Autenticación OTP por correo: `src/lib/auth.ts`.
+- Componente React de acceso por correo y OTP: `src/components/EmailCodeForm.tsx`.
+- Validación y alta transaccional de perfil: `src/lib/perfil.ts`.
+- Callback de autenticación: `src/lib/auth-callback.ts`.
+- Migraciones SQL 0001 a 0004.
+- Pruebas unitarias iniciales de validación del perfil.
 
-## Límite operativo verificado
-El proyecto Lovable original sigue sin cambios de código desde el último commit de noviembre 15. La llamada al agente Lovable del 27-11 fue rechazada por el workspace: saldo de créditos agotado. Por eso estos módulos no están integrados a las rutas reales ni se han ejecutado allí tests, lint, typecheck o build.
+El repositorio no contiene el árbol completo de la aplicación Lovable. Los módulos aún no están integrados en rutas reales del sitio.
 
-La base Supabase ya tiene las siete tablas de la migración 0001, según la consulta anterior. La migración 0002 está versionada, pero no se pudo aplicar ni verificar en la base activa por el límite temporal de consultas SQL de Lovable.
+## Validación automatizada
+- En la rama de trabajo, el workflow CI del 27-11-2026 terminó en éxito: instalación de dependencias, pruebas y typecheck.
+- En `main`, la ejecución anterior falló durante la instalación de dependencias; las pruebas y el typecheck fueron omitidos.
+- El CI verde valida el conjunto portable aislado; no demuestra integración con la aplicación Lovable ni seguridad real de la base de datos.
+- No se ha ejecutado un build completo del sitio ni una prueba end-to-end con cuentas distintas.
 
-## Diferencias que aún deben resolverse antes de activar
-1. El diseño aprobado recomienda OTP por correo sin contraseña; el módulo portable sigue esta decisión.
-2. Los documentos jurídicos de consentimiento aún no tienen versiones/hash aprobados; no se deben inventar ni sembrar.
-3. La primera identidad Director no está definida/provisionada; no se asignó automáticamente.
-4. La migración 0001 debe revisarse contra el esquema exacto aprobado: especialmente transiciones, campos que la cola del Director puede ver, separación de roles y reglas de consentimiento.
-5. La migración 0002 debe aplicarse y probarse antes de usar `crear_perfil`.
-6. No hay aún pruebas reales A/B, pruebas de escalamiento de roles ni validación de correo en entorno configurado.
+## Estado de Supabase
+La documentación y las consultas anteriores registran que la migración 0001 fue aplicada a la base vinculada al proyecto Lovable y que existen las siete tablas previstas. La migración 0002 quedó pendiente de aplicación y verificación. Las migraciones 0003 y 0004 están versionadas en la rama de trabajo, pero no se ha confirmado su aplicación en la base activa.
 
-## Siguiente secuencia
-1. Reanudar en Lovable cuando el workspace permita enviar construcción: integrar OTP en `/acceso`, rutas protegidas `/mi-perfil` y `/moderacion`, sin alterar las páginas actuales.
-2. Aplicar migración correctiva en base activa y verificar RLS/GRANT con sesiones distintas.
-3. Configurar URL y anon key como variables públicas del proyecto; nunca service_role en frontend.
-4. Crear documentos de consentimiento versionados tras revisión jurídica.
-5. Probar registro, confirmación OTP, aislamiento A/B, rol Director y denegación total al administrador técnico.
-6. Ejecutar suite completa, lint, typecheck y build. No declarar listo antes de ello.
+La consulta más reciente volvió a ser rechazada por el límite temporal de acciones de base de datos del plan gratuito. Por tanto, no se debe asumir que las políticas y funciones añadidas en 0002–0004 estén activas.
 
-## Restricciones de despliegue
-Sin publicación, cobros, invitaciones, usuarios reales ni presentación automática. Los módulos son código de preparación, no un piloto operativo.
+## Separación de funciones prevista
+- Miembro: opera sobre su propio perfil y consentimientos.
+- Director: consulta una cola reducida mediante función protegida, verifica teléfono y resuelve estados.
+- Administrador técnico: no debe tener lectura de perfiles ni permisos de moderación.
+- No existe un Director sembrado automáticamente. La asignación inicial requiere una operación controlada del propietario después de verificar la identidad.
+
+## Pendientes bloqueantes antes de registrar usuarios
+1. Revisar las migraciones SQL 0002–0004 y resolver cualquier observación de seguridad antes de aplicarlas.
+2. Aplicar las migraciones pendientes en la base correcta y verificar RLS, GRANT/REVOKE y funciones con sesiones de prueba.
+3. Probar aislamiento entre dos miembros, Director y administrador técnico.
+4. Aprobar textos y versiones jurídicas de condiciones, convivencia, privacidad y mayoría de edad; después generar hashes reales y sembrar los documentos.
+5. Integrar OTP y perfil en rutas reales sin reemplazar ni rediseñar páginas existentes.
+6. Configurar variables públicas de Supabase y plantilla OTP; nunca exponer service_role ni secretos.
+7. Implementar el panel privado del Director y la verificación manual.
+8. Ejecutar pruebas integrales, build y revisión móvil/escritorio.
+
+## Límites operativos
+- El proyecto Lovable original permanece sin cambios de código desde el 15-11-2026; el intento de usar su agente fue rechazado por saldo de créditos agotado.
+- No se han creado perfiles ni roles privilegiados de prueba.
+- No se han publicado cambios, activado pagos, invitado usuarios ni contactado terceros.
+- No registrar personas reales hasta cerrar las verificaciones de seguridad, autenticación y consentimiento.
+- No almacenar fotos, selfies ni documentos oficiales en esta fase.
