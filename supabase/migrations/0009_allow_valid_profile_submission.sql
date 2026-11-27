@@ -28,6 +28,12 @@ begin
     or new.ciudad is distinct from old.ciudad
     or new.rango_edad is distinct from old.rango_edad;
 
+  if v_is_director
+     and (select auth.uid()) is not distinct from old.user_id
+     and v_personal_changed then
+    raise exception 'El Director no puede editar su propio perfil';
+  end if;
+
   if not v_is_director then
     -- Única transición de estado permitida al titular: enviar a revisión.
     if new.estado is distinct from old.estado then
