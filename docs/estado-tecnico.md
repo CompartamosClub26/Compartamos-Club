@@ -71,3 +71,35 @@ Las consultas anteriores registraron que la migración 0001 fue aplicada y que l
 - No se han publicado cambios, activado pagos, invitado usuarios ni contactado terceros.
 - No registrar personas reales hasta cerrar las verificaciones de seguridad, autenticación y consentimiento.
 - No almacenar fotos, selfies ni documentos oficiales en esta fase.
+
+
+## Contraste adicional de solo lectura con Supabase activo — 27-11-2026
+
+Se reanudó la inspección mediante consultas de solo lectura. La consulta inicial permitió leer políticas, funciones, triggers y ACL; al continuar, el plan gratuito volvió a bloquear consultas durante 60 minutos. No se ejecutó ningún INSERT, UPDATE, DELETE, DDL ni migración.
+
+### Huella de políticas observada
+
+- `public.profile_interests`: sigue presente la política amplia `interests_self_all` (`FOR ALL`, únicamente `user_id = auth.uid()`).
+- `public.profile_goals`: sigue presente `goals_self_all` con el mismo alcance amplio.
+- `public.profiles`: `profiles_self_insert` solo exige titularidad, estado `borrador` y ciudad Bogotá; `profiles_self_update` permite actualizar la fila propia y depende del trigger para proteger campos.
+- `public.user_consents`: se observaron políticas de SELECT e INSERT propios; no apareció una política de UPDATE.
+- `public.consent_documents`: lectura pública para `anon` y `authenticated`.
+
+Esta huella coincide con las políticas base de 0001 y no con el endurecimiento de 0002/0003/0007. En particular, los intereses y objetivos todavía no están restringidos por estado en la base activa. La migración 0007 de la rama de integración corrige ese comportamiento después de aplicar la secuencia previa; no se debe ejecutar aislada.
+
+### Funciones, triggers y roles
+
+- Se observaron las cuatro funciones públicas `enviar_revision`, `marcar_telefono_verificado`, `moderacion_cola` y `resolver_revision` como `SECURITY DEFINER`, con `search_path` vacío.
+- Las cuatro tienen EXECUTE para `authenticated` y no para `anon`; las funciones de moderación comprueban el rol Director internamente.
+- Los triggers activos observados son `profiles_guard_update` y `profiles_audit_status`.
+- `private.user_roles` tiene RLS habilitado y la consulta de asignaciones devolvió cero filas: **no hay Director ni administrador técnico asignado en la base activa**.
+- `private.audit_log` y `private.user_roles` solo mostraron privilegios directos para el propietario PostgreSQL en la consulta ACL realizada.
+- RLS está habilitado en las tablas consultadas; `FORCE ROW LEVEL SECURITY` aparece desactivado.
+
+### Conclusión de seguridad
+
+La base activa no debe recibir miembros todavía. La política amplia de intereses/objetivos permite cambios propios sin comprobar el estado del perfil; el trigger de perfil observado tampoco bloquea cambios de datos personales durante la revisión. Además, no existe un Director asignado para operar la cola de moderación.
+
+Las migraciones 0002–0011 de la rama de integración siguen sin aplicarse a Supabase activo. La ausencia de un historial `supabase_migrations` impide afirmar el número exacto de migración aplicada; la conclusión anterior se basa en la huella efectiva de políticas y funciones observada, no en asumir el historial.
+
+La consulta adicional quedó bloqueada por el límite temporal del plan gratuito. Quedan pendientes privilegios detallados de tabla/columna, definición completa de ACL y una segunda verificación de triggers/policies cuando se restablezca el acceso. No se modificó la base activa.
