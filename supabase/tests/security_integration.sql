@@ -73,7 +73,7 @@ select public.test_assert_true(
 );
 
 select public.test_expect_error(
-  $update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$,
+  $$update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$$,
   'permission denied'
 );
 
