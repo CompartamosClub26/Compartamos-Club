@@ -1,120 +1,261 @@
--- Compartamos Club · MVP Pareja Bogotá
--- Migration 0001: private member data, consent and role separation.
+-- Compartamos Club · Módulo 1 · MVP Buscar pareja Bogotá
+-- Esquema alineado con el diseño técnico aprobado del 14-11-2026.
+-- No ejecutar hasta confirmar el proyecto Supabase destino y revisar los textos legales.
 begin;
 
+create extension if not exists pgcrypto;
 create schema if not exists private;
 
-create table if not exists public.member_profiles (
+do $$ begin
+  create type public.profile_status as enum
+    ('borrador','pendiente','aprobado','rechazado','suspendido','baja_solicitada');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type public.staff_role as enum ('director','admin_tecnico');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type public.consent_type as enum
+    ('condiciones','convivencia','privacidad','mayoria_edad','contacto','foto');
+exception when duplicate_object then null; end $$;
+do $$ begin
+  create type public.verification_method as enum ('manual','sms');
+exception when duplicate_object then null; end $$;
+
+create table if not exists public.profiles (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  nickname text not null check (char_length(trim(nickname)) between 2 and 40),
-  city text not null default 'Bogotá' check (city = 'Bogotá'),
-  birth_date date not null,
-  bio text null check (bio is null or char_length(bio) <= 500),
-  interests text[] not null default '{}',
-  seeking text not null default 'pareja' check (seeking = 'pareja'),
-  review_status text not null default 'pending' check (review_status in ('pending','approved','rejected','suspended')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint member_is_adult check (birth_date <= (current_date - interval '18 years')::date)
+  alias text not null check (char_length(trim(alias)) between 2 and 40),
+  ciudad text not null default 'Bogotá' check (ciudad = 'Bogotá'),
+  rango_edad text not null check (rango_edad in ('18–24','25–34','35–44','45–54','55 o más')),
+  estado public.profile_status not null default 'borrador',
+  motivo_estado text,
+  telefono_verificado_en timestamptz,
+  metodo_verificacion public.verification_method,
+  enviado_en timestamptz,
+  revisado_por uuid,
+  revisado_en timestamptz,
+  creado_en timestamptz not null default now(),
+  actualizado_en timestamptz not null default now(),
+  constraint verification_pair check (
+    (telefono_verificado_en is null and metodo_verificacion is null)
+    or (telefono_verificado_en is not null and metodo_verificacion is not null)
+  )
+);
+create index if not exists profiles_review_queue_idx
+  on public.profiles (estado, enviado_en) where estado = 'pendiente';
+
+create table if not exists public.profile_interests (
+  user_id uuid not null references public.profiles(user_id) on delete cascade,
+  interes text not null check (interes in (
+    'Senderismo','Café y conversación','Fútbol','Cerámica y arte','Juegos de mesa',
+    'Fotografía','Baile','Lectura','Cocina','Ciclismo','Idiomas','Voluntariado','Yoga','Cine'
+  )),
+  primary key (user_id, interes)
 );
 
-create table if not exists private.staff_roles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  role text not null check (role in ('director','technical_admin')),
-  created_at timestamptz not null default now()
+create table if not exists public.profile_goals (
+  user_id uuid not null references public.profiles(user_id) on delete cascade,
+  objetivo text not null check (objetivo = 'pareja'),
+  primary key (user_id, objetivo)
 );
 
-create table if not exists public.member_consents (
+create table if not exists public.consent_documents (
+  id uuid primary key default gen_random_uuid(),
+  tipo public.consent_type not null,
+  version text not null,
+  sha256 text not null check (sha256 ~ '^[a-f0-9]{64}$'),
+  vigente_desde timestamptz not null default now(),
+  unique (tipo, version)
+);
+
+create table if not exists public.user_consents (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade,
-  consent_type text not null check (consent_type in ('terms','privacy','community_safety','profile_visibility')),
-  version text not null,
-  accepted boolean not null,
-  accepted_at timestamptz not null default now()
+  document_id uuid not null references public.consent_documents(id),
+  aceptado_en timestamptz not null default now(),
+  retirado_en timestamptz,
+  unique (user_id, document_id)
+);
+create index if not exists user_consents_user_idx on public.user_consents(user_id);
+
+create table if not exists private.user_roles (
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role public.staff_role not null,
+  created_at timestamptz not null default now(),
+  primary key (user_id, role)
 );
 
-create table if not exists private.audit_events (
+create table if not exists private.audit_log (
   id bigint generated always as identity primary key,
-  actor_user_id uuid null,
-  event_type text not null,
-  subject_user_id uuid null,
-  metadata jsonb not null default '{}'::jsonb,
-  created_at timestamptz not null default now()
+  actor_id uuid,
+  accion text not null,
+  entidad text not null,
+  entidad_id uuid,
+  campos text[] not null default '{}',
+  estado_antes text,
+  estado_despues text,
+  en timestamptz not null default now()
 );
+
+create or replace function private.has_role(p_user uuid, p_role public.staff_role)
+returns boolean language sql stable security definer
+set search_path = ''
+as $$
+  select exists(select 1 from private.user_roles r where r.user_id = p_user and r.role = p_role);
+$$;
 
 create or replace function private.is_director()
 returns boolean language sql stable security definer
-set search_path = '' as $$
-  select exists (
-    select 1 from private.staff_roles r
-    where r.user_id = (select auth.uid()) and r.role = 'director'
-  );
-$$;
+set search_path = ''
+as $$ select private.has_role((select auth.uid()), 'director'::public.staff_role); $$;
 
-create or replace function private.prevent_profile_privilege_escalation()
-returns trigger language plpgsql set search_path = '' as $$
+create or replace function private.guard_profile_update()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
 begin
-  if new.user_id <> old.user_id
-     or new.review_status <> old.review_status
-     or new.created_at <> old.created_at then
-    raise exception 'Los campos protegidos solo pueden modificarse mediante revisión del Director';
+  if (select auth.uid()) is distinct from old.user_id and not private.is_director() then
+    raise exception 'Acceso denegado';
   end if;
-  new.updated_at := now();
+  if not private.is_director() and (
+    new.estado is distinct from old.estado
+    or new.motivo_estado is distinct from old.motivo_estado
+    or new.telefono_verificado_en is distinct from old.telefono_verificado_en
+    or new.metodo_verificacion is distinct from old.metodo_verificacion
+    or new.revisado_por is distinct from old.revisado_por
+    or new.revisado_en is distinct from old.revisado_en
+    or new.enviado_en is distinct from old.enviado_en
+    or new.user_id is distinct from old.user_id
+  ) then
+    raise exception 'Los campos de revisión solo los modifica el Director';
+  end if;
+  new.actualizado_en := now();
   return new;
 end;
 $$;
+drop trigger if exists profiles_guard_update on public.profiles;
+create trigger profiles_guard_update before update on public.profiles
+for each row execute function private.guard_profile_update();
 
-drop trigger if exists protect_member_profile_fields on public.member_profiles;
-create trigger protect_member_profile_fields
-before update on public.member_profiles
-for each row execute function private.prevent_profile_privilege_escalation();
+create or replace function private.audit_profile_status()
+returns trigger language plpgsql security definer set search_path = ''
+as $$
+begin
+  if old.estado is distinct from new.estado then
+    insert into private.audit_log(actor_id, accion, entidad, entidad_id, campos, estado_antes, estado_despues)
+    values ((select auth.uid()), 'cambio_estado', 'profiles', new.user_id, array['estado'], old.estado::text, new.estado::text);
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists profiles_audit_status on public.profiles;
+create trigger profiles_audit_status after update on public.profiles
+for each row execute function private.audit_profile_status();
 
-alter table public.member_profiles enable row level security;
-alter table public.member_consents enable row level security;
-alter table private.staff_roles enable row level security;
-alter table private.audit_events enable row level security;
+create or replace function public.moderacion_cola()
+returns table (
+  user_id uuid, alias text, ciudad text, rango_edad text, estado public.profile_status,
+  enviado_en timestamptz, telefono_verificado boolean
+)
+language plpgsql stable security definer set search_path = ''
+as $$
+begin
+  if not private.is_director() then raise exception 'Acceso denegado'; end if;
+  return query
+    select p.user_id, p.alias, p.ciudad, p.rango_edad, p.estado, p.enviado_en,
+           (p.telefono_verificado_en is not null)
+    from public.profiles p where p.estado = 'pendiente'
+    order by p.enviado_en nulls last;
+end;
+$$;
 
-drop policy if exists "members read own profile" on public.member_profiles;
-create policy "members read own profile" on public.member_profiles
-for select to authenticated using (user_id = (select auth.uid()));
+create or replace function public.marcar_telefono_verificado(p_user_id uuid, p_metodo public.verification_method)
+returns void language plpgsql security definer set search_path = ''
+as $$
+begin
+  if not private.is_director() or p_user_id = (select auth.uid()) then raise exception 'Acceso denegado'; end if;
+  update public.profiles set telefono_verificado_en = now(), metodo_verificacion = p_metodo
+  where user_id = p_user_id and estado = 'pendiente';
+  if not found then raise exception 'Perfil no disponible para verificación'; end if;
+  insert into private.audit_log(actor_id, accion, entidad, entidad_id, campos)
+  values ((select auth.uid()), 'telefono_verificado', 'profiles', p_user_id, array['telefono_verificado_en','metodo_verificacion']);
+end;
+$$;
 
-drop policy if exists "director reads profiles" on public.member_profiles;
-create policy "director reads profiles" on public.member_profiles
-for select to authenticated using (private.is_director());
+create or replace function public.resolver_revision(p_user_id uuid, p_estado public.profile_status, p_motivo text default null)
+returns void language plpgsql security definer set search_path = ''
+as $$
+begin
+  if not private.is_director() or p_user_id = (select auth.uid()) then raise exception 'Acceso denegado'; end if;
+  if p_estado not in ('aprobado','rechazado','suspendido') then raise exception 'Transición no permitida'; end if;
+  if p_estado = 'aprobado' and not exists (
+    select 1 from public.profiles p where p.user_id = p_user_id
+      and p.estado = 'pendiente' and p.telefono_verificado_en is not null
+      and exists (
+        select 1 from public.user_consents uc join public.consent_documents cd on cd.id = uc.document_id
+        where uc.user_id = p_user_id and uc.retirado_en is null
+          and cd.tipo in ('condiciones','convivencia','privacidad','mayoria_edad')
+          and cd.vigente_desde <= now()
+      )
+  ) then raise exception 'Faltan verificación telefónica o consentimientos vigentes'; end if;
+  update public.profiles set estado = p_estado, motivo_estado = p_motivo,
+    revisado_por = (select auth.uid()), revisado_en = now()
+  where user_id = p_user_id
+    and ((p_estado in ('aprobado','rechazado') and estado = 'pendiente')
+      or (p_estado = 'suspendido' and estado = 'aprobado'));
+  if not found then raise exception 'Transición de estado no permitida'; end if;
+end;
+$$;
 
-drop policy if exists "members create own pending profile" on public.member_profiles;
-create policy "members create own pending profile" on public.member_profiles
-for insert to authenticated with check (
-  user_id = (select auth.uid()) and review_status = 'pending' and city = 'Bogotá' and seeking = 'pareja'
-  and birth_date <= (current_date - interval '18 years')::date
-);
+alter table public.profiles enable row level security;
+alter table public.profile_interests enable row level security;
+alter table public.profile_goals enable row level security;
+alter table public.consent_documents enable row level security;
+alter table public.user_consents enable row level security;
+alter table private.user_roles enable row level security;
+alter table private.audit_log enable row level security;
 
-drop policy if exists "members update own profile" on public.member_profiles;
-create policy "members update own profile" on public.member_profiles
-for update to authenticated using (user_id = (select auth.uid()))
+drop policy if exists profiles_self_select on public.profiles;
+create policy profiles_self_select on public.profiles for select to authenticated
+using (user_id = (select auth.uid()));
+drop policy if exists profiles_self_insert on public.profiles;
+create policy profiles_self_insert on public.profiles for insert to authenticated
+with check (user_id = (select auth.uid()) and estado = 'borrador' and ciudad = 'Bogotá');
+drop policy if exists profiles_self_update on public.profiles;
+create policy profiles_self_update on public.profiles for update to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+drop policy if exists interests_self_all on public.profile_interests;
+create policy interests_self_all on public.profile_interests for all to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+drop policy if exists goals_self_all on public.profile_goals;
+create policy goals_self_all on public.profile_goals for all to authenticated
+using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
+
+drop policy if exists consents_self_select on public.user_consents;
+create policy consents_self_select on public.user_consents for select to authenticated
+using (user_id = (select auth.uid()));
+drop policy if exists consents_self_insert on public.user_consents;
+create policy consents_self_insert on public.user_consents for insert to authenticated
 with check (user_id = (select auth.uid()));
 
-drop policy if exists "director updates review status" on public.member_profiles;
-create policy "director updates review status" on public.member_profiles
-for update to authenticated using (private.is_director()) with check (private.is_director());
+drop policy if exists documents_read on public.consent_documents;
+create policy documents_read on public.consent_documents for select to anon, authenticated using (true);
 
-drop policy if exists "members read own consents" on public.member_consents;
-create policy "members read own consents" on public.member_consents
-for select to authenticated using (user_id = (select auth.uid()));
-
-drop policy if exists "members record own consents" on public.member_consents;
-create policy "members record own consents" on public.member_consents
-for insert to authenticated with check (user_id = (select auth.uid()));
-
--- Staff roles and audit events are intentionally inaccessible to ordinary clients.
 revoke all on schema private from public, anon, authenticated;
-revoke all on all tables in schema private from public, anon, authenticated;
 grant usage on schema private to authenticated;
+revoke all on all tables in schema private from public, anon, authenticated;
+grant execute on function private.has_role(uuid, public.staff_role) to authenticated;
 grant execute on function private.is_director() to authenticated;
+grant execute on function public.moderacion_cola() to authenticated;
+grant execute on function public.marcar_telefono_verificado(uuid, public.verification_method) to authenticated;
+grant execute on function public.resolver_revision(uuid, public.profile_status, text) to authenticated;
 
-grant select, insert, update on public.member_profiles to authenticated;
-grant select, insert on public.member_consents to authenticated;
-revoke all on public.member_profiles from anon;
-revoke all on public.member_consents from anon;
+grant select, insert, update on public.profiles to authenticated;
+grant select, insert, update, delete on public.profile_interests to authenticated;
+grant select, insert, update, delete on public.profile_goals to authenticated;
+grant select on public.consent_documents to anon, authenticated;
+grant select, insert on public.user_consents to authenticated;
+revoke all on public.profiles, public.profile_interests, public.profile_goals, public.user_consents from anon;
 
+-- No roles are seeded. The first Director must be provisioned by the project owner
+-- through a controlled SQL operation after identity verification.
 commit;
