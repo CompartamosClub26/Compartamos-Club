@@ -40,6 +40,8 @@ describe("Hardening SQL · estados del perfil", () => {
     expect(sql).toMatch(/p_estado not in \('aprobado','rechazado','suspendido'\)/i);
     expect(sql).toMatch(/estado = 'pendiente'/i);
     expect(sql).toMatch(/estado = 'aprobado'/i);
+    expect(sql).toMatch(/and \(\(p_estado in \('aprobado','rechazado'\) and estado = 'pendiente'\)\s+or \(p_estado = 'suspendido' and estado = 'aprobado'\)\)/i);
+    expect(sql).toMatch(/p_user_id = \(select auth\.uid\(\)\)/i);
     expect(sql).toMatch(/transición de estado no permitida/i);
   });
 
