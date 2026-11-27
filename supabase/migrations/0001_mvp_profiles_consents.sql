@@ -255,7 +255,12 @@ create policy profiles_self_select on public.profiles for select to authenticate
 using (user_id = (select auth.uid()));
 drop policy if exists profiles_self_insert on public.profiles;
 create policy profiles_self_insert on public.profiles for insert to authenticated
-with check (user_id = (select auth.uid()) and estado = 'borrador' and ciudad = 'Bogotá');
+with check (
+  user_id = (select auth.uid()) and estado = 'borrador' and ciudad = 'Bogotá'
+  and motivo_estado is null and telefono_verificado_en is null
+  and metodo_verificacion is null and enviado_en is null
+  and revisado_por is null and revisado_en is null
+);
 drop policy if exists profiles_self_update on public.profiles;
 create policy profiles_self_update on public.profiles for update to authenticated
 using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
