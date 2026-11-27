@@ -54,3 +54,7 @@ Alcance: validación previa a habilitar usuarios reales.
 | SEC-22 | Miembro | Reenviar un perfil rechazado | Solo pasa a pendiente si vuelve a cumplir todos los requisitos; se limpian los datos de revisión anteriores. |
 
 La transición de envío se valida tanto en `public.enviar_revision()` como en el trigger de perfiles. Esto evita que el trigger bloquee el flujo legítimo y evita que una actualización directa eluda los requisitos del envío.
+
+| SEC-23 | Miembro o Director | Intentar actualizar directamente el estado, revisión, verificación o marcas de tiempo del perfil | Rechazado por privilegios de columna; solo RPC autorizadas pueden hacerlo. |
+| SEC-24 | Director | Intentar aprobar su propio perfil por RPC o actualización directa | Rechazado. |
+| SEC-25 | Director | Consultar la cola cuando su propio perfil está pendiente | Su propio perfil no aparece en la cola. |
