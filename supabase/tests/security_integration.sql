@@ -210,7 +210,7 @@ select public.test_assert_true(
 -- Consent retirement works once, is server-timestamped, and cannot be repeated.
 select public.retirar_consentimiento((select id from public.user_consents where user_id = '11111111-1111-4111-8111-111111111111' and document_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'));
 select public.test_expect_error(
-  $select public.retirar_consentimiento((select id from public.user_consents where user_id = '11111111-1111-4111-8111-111111111111' and document_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'))$,
+  $$select public.retirar_consentimiento((select id from public.user_consents where user_id = '11111111-1111-4111-8111-111111111111' and document_id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'))$$,
   'Consentimiento no disponible o ya retirado'
 );
 select public.test_expect_error(
