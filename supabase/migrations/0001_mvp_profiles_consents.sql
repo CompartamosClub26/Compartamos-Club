@@ -127,6 +127,16 @@ begin
   ) then
     raise exception 'Los campos de revisión solo los modifica el Director';
   end if;
+  if not private.is_director() and (
+    new.alias is distinct from old.alias
+    or new.ciudad is distinct from old.ciudad
+    or new.rango_edad is distinct from old.rango_edad
+  ) and old.estado = 'aprobado' then
+    new.estado := 'pendiente';
+    new.enviado_en := now();
+    new.revisado_por := null;
+    new.revisado_en := null;
+  end if;
   new.actualizado_en := now();
   return new;
 end;
@@ -167,6 +177,34 @@ begin
 end;
 $$;
 
+create or replace function public.enviar_revision()
+returns void language plpgsql security definer set search_path = ''
+as $
+declare v_user uuid := (select auth.uid());
+begin
+  if v_user is null then raise exception 'Autenticación requerida'; end if;
+  if not exists (select 1 from public.profiles p where p.user_id = v_user and p.estado in ('borrador','rechazado')) then
+    raise exception 'Perfil no disponible para enviar';
+  end if;
+  if not exists (select 1 from public.profile_interests i where i.user_id = v_user)
+     or not exists (select 1 from public.profile_goals g where g.user_id = v_user and g.objetivo = 'pareja') then
+    raise exception 'Completa intereses y objetivo Buscar pareja';
+  end if;
+  if (
+    select count(distinct cd.tipo)
+    from public.user_consents uc
+    join public.consent_documents cd on cd.id = uc.document_id
+    where uc.user_id = v_user and uc.retirado_en is null
+      and cd.tipo in ('condiciones','convivencia','privacidad','mayoria_edad')
+      and cd.vigente_desde <= now()
+  ) <> 4 then
+    raise exception 'Faltan consentimientos vigentes obligatorios';
+  end if;
+  update public.profiles set estado = 'pendiente', enviado_en = now(), motivo_estado = null
+  where user_id = v_user;
+end;
+$;
+
 create or replace function public.marcar_telefono_verificado(p_user_id uuid, p_metodo public.verification_method)
 returns void language plpgsql security definer set search_path = ''
 as $$
@@ -189,12 +227,11 @@ begin
   if p_estado = 'aprobado' and not exists (
     select 1 from public.profiles p where p.user_id = p_user_id
       and p.estado = 'pendiente' and p.telefono_verificado_en is not null
-      and exists (
-        select 1 from public.user_consents uc join public.consent_documents cd on cd.id = uc.document_id
+      and (select count(distinct cd.tipo)
+        from public.user_consents uc join public.consent_documents cd on cd.id = uc.document_id
         where uc.user_id = p_user_id and uc.retirado_en is null
           and cd.tipo in ('condiciones','convivencia','privacidad','mayoria_edad')
-          and cd.vigente_desde <= now()
-      )
+          and cd.vigente_desde <= now()) = 4
   ) then raise exception 'Faltan verificación telefónica o consentimientos vigentes'; end if;
   update public.profiles set estado = p_estado, motivo_estado = p_motivo,
     revisado_por = (select auth.uid()), revisado_en = now()
@@ -243,9 +280,15 @@ create policy documents_read on public.consent_documents for select to anon, aut
 revoke all on schema private from public, anon, authenticated;
 grant usage on schema private to authenticated;
 revoke all on all tables in schema private from public, anon, authenticated;
-grant execute on function private.has_role(uuid, public.staff_role) to authenticated;
+revoke all on function private.has_role(uuid, public.staff_role) from public, anon, authenticated;
+revoke all on function private.is_director() from public, anon;
 grant execute on function private.is_director() to authenticated;
+revoke all on function public.moderacion_cola() from public, anon;
+revoke all on function public.enviar_revision() from public, anon;
+revoke all on function public.marcar_telefono_verificado(uuid, public.verification_method) from public, anon;
+revoke all on function public.resolver_revision(uuid, public.profile_status, text) from public, anon;
 grant execute on function public.moderacion_cola() to authenticated;
+grant execute on function public.enviar_revision() to authenticated;
 grant execute on function public.marcar_telefono_verificado(uuid, public.verification_method) to authenticated;
 grant execute on function public.resolver_revision(uuid, public.profile_status, text) to authenticated;
 
