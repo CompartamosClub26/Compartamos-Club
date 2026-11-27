@@ -19,8 +19,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: Pin stable npm and clear runner cache
+        run: |
+          npm install --global npm@10.8.2
+          npm cache clean --force
       - name: Install dependencies
-        run: npm install
+        run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Run tests
         run: npm test
       - name: Type check
