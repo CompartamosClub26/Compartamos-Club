@@ -2,28 +2,27 @@ import { z } from "zod";
 import { getSupabase } from "./supabase";
 
 const emailSchema = z.string().trim().email("Escribe un correo válido.");
-const passwordSchema = z.string().min(10, "La contraseña debe tener al menos 10 caracteres.");
 
-export async function registerWithEmail(input: { email: string; password: string }) {
-  const email = emailSchema.parse(input.email);
-  const password = passwordSchema.parse(input.password);
-  const { data, error } = await getSupabase().auth.signUp({
+/** Solicita un código de un solo uso. La respuesta no revela si el correo existe. */
+export async function requestEmailCode(emailInput: string) {
+  const email = emailSchema.parse(emailInput);
+  const { error } = await getSupabase().auth.signInWithOtp({
     email,
-    password,
-    options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    options: { shouldCreateUser: true },
   });
   if (error) throw error;
-  return {
-    user: data.user,
-    session: data.session,
-    confirmationRequired: !data.session,
-  };
+  return { message: "Si el correo puede recibir el código, te lo enviaremos." };
 }
 
-export async function signInWithEmail(input: { email: string; password: string }) {
+/** Verifica el OTP de correo y devuelve la sesión autenticada. */
+export async function verifyEmailCode(input: { email: string; token: string }) {
   const email = emailSchema.parse(input.email);
-  const password = passwordSchema.parse(input.password);
-  const { data, error } = await getSupabase().auth.signInWithPassword({ email, password });
+  const token = z.string().trim().min(6).max(8).parse(input.token);
+  const { data, error } = await getSupabase().auth.verifyOtp({
+    email,
+    token,
+    type: "email",
+  });
   if (error) throw error;
   return data;
 }
@@ -33,16 +32,8 @@ export async function signOut() {
   if (error) throw error;
 }
 
-export async function requestPasswordReset(emailInput: string) {
-  const email = emailSchema.parse(emailInput);
-  const { error } = await getSupabase().auth.resetPasswordForEmail(email, {
-    redirectTo: `${window.location.origin}/auth/reset-password`,
-  });
+export async function getCurrentUser() {
+  const { data, error } = await getSupabase().auth.getUser();
   if (error) throw error;
-}
-
-export async function updatePassword(passwordInput: string) {
-  const password = passwordSchema.parse(passwordInput);
-  const { error } = await getSupabase().auth.updateUser({ password });
-  if (error) throw error;
+  return data.user;
 }
