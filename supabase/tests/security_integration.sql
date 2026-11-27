@@ -73,8 +73,8 @@ select public.test_assert_true(
 );
 
 select public.test_expect_error(
-  $$update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$$,
-  'Transición de estado no permitida para el miembro'
+  $update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$,
+  'permission denied'
 );
 
 select public.test_expect_error(
@@ -116,9 +116,38 @@ select public.test_assert_true(
 );
 select public.marcar_telefono_verificado('11111111-1111-4111-8111-111111111111', 'manual');
 select public.resolver_revision('11111111-1111-4111-8111-111111111111', 'aprobado', null);
+reset role;
 select public.test_assert_true(
   (select estado::text = 'aprobado' from public.profiles where user_id = '11111111-1111-4111-8111-111111111111'),
   'el Director debe poder aprobar un perfil verificado con cuatro consentimientos'
+);
+
+-- A Director may not self-moderate or change their own profile status directly.
+select set_config('request.jwt.claim.sub', '33333333-3333-4333-8333-333333333333', true);
+set local role authenticated;
+select public.crear_perfil(
+  'Director prueba',
+  '55 o más',
+  array['Lectura'],
+  array[
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1'::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2'::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3'::uuid,
+    'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4'::uuid
+  ]
+);
+select public.enviar_revision();
+select public.test_expect_error(
+  $select public.resolver_revision('33333333-3333-4333-8333-333333333333', 'aprobado', null)$,
+  'Acceso denegado'
+);
+select public.test_expect_error(
+  $update public.profiles set estado = 'aprobado' where user_id = '33333333-3333-4333-8333-333333333333'$,
+  'permission denied'
+);
+select public.test_assert_true(
+  (select count(*) = 0 from public.moderacion_cola()),
+  'la cola del Director debe excluir su propio perfil'
 );
 
 -- Admin técnico cannot inspect profiles or call the Director queue.
