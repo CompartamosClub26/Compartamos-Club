@@ -74,10 +74,18 @@ drop policy if exists consents_self_update on public.user_consents;
 create policy consents_self_select on public.user_consents
 for select to authenticated using (user_id = (select auth.uid()));
 create policy consents_self_insert on public.user_consents
-for insert to authenticated with check (user_id = (select auth.uid()));
+for insert to authenticated with check (
+  user_id = (select auth.uid()) and exists (
+    select 1 from public.consent_documents cd
+    where cd.id = document_id
+      and cd.tipo in ('condiciones','convivencia','privacidad','mayoria_edad')
+      and cd.vigente_desde <= now()
+  )
+);
 create policy consents_self_update on public.user_consents
-for update to authenticated using (user_id = (select auth.uid()))
-with check (user_id = (select auth.uid()));
+for update to authenticated
+using (user_id = (select auth.uid()) and retirado_en is null)
+with check (user_id = (select auth.uid()) and retirado_en is not null);
 revoke delete on public.user_consents from authenticated;
 revoke update on public.user_consents from authenticated;
 grant update (retirado_en) on public.user_consents to authenticated;
