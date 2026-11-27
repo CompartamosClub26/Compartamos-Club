@@ -8,11 +8,13 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.57.0",
-    "zod": "^3.25.76"
+    "zod": "^3.25.76",
+    "react": "^19.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.16.5",
     "typescript": "^5.8.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "@types/react": "^19.2.0"
   }
 }
