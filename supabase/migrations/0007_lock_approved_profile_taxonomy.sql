@@ -4,6 +4,11 @@
 
 begin;
 
+-- Retirar las políticas permisivas heredadas de 0001. PostgreSQL combina
+-- políticas permisivas con OR; dejarlas activas anularía estas restricciones.
+drop policy if exists interests_self_all on public.profile_interests;
+drop policy if exists goals_self_all on public.profile_goals;
+
 drop policy if exists interests_self_insert on public.profile_interests;
 create policy interests_self_insert on public.profile_interests
 for insert to authenticated with check (
