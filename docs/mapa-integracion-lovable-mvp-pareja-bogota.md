@@ -113,3 +113,22 @@ No habilitar miembros reales hasta cumplir todo:
 - No se ejecutaron escrituras, DDL ni migraciones en Supabase activo.
 - No se fusionaron pull requests, no se publicó el producto y no se contactó a terceros.
 - Este documento es una guía de integración, no una certificación de seguridad ni una autorización para habilitar usuarios.
+
+
+## 10. Verificación adicional de integración — 27-11-2026
+
+Se volvió a inspeccionar el commit original de Lovable `d6f11d5711d56d64bed1e6c2a8eeb642135e730a` y el estado del backend:
+
+- La base PostgreSQL/Supabase del proyecto está habilitada (`get_database_status`: enabled=true, stack=supabase).
+- El `package.json` del proyecto Lovable contiene TanStack Start/Router, React 19, TypeScript, Vite y Zod.
+- Ese `package.json` **no incluye** `@supabase/supabase-js` ni `@supabase/ssr`.
+- La búsqueda en todo el código fuente no encontró imports de `@supabase` ni uso implementado de `createServerFn`; las únicas coincidencias de `createServerFn` están en documentos de planificación y pruebas que verifican que el formulario demo no tenga backend.
+- Por tanto, que la base esté habilitada no significa que la aplicación ya esté conectada a ella. En el código actual no existe todavía un cliente de Supabase, flujo OTP ni capa server-function de autenticación.
+
+### Decisión técnica para la siguiente fase
+
+No portar directamente el módulo portable actual: su cliente usa `@supabase/supabase-js` en navegador y persiste sesión allí. Eso no implementa el patrón de sesión SSR descrito en el plan M1. Primero debe diseñarse e implementarse una capa de sesión compatible con TanStack Start, con cookies gestionadas en servidor y validación de sesión en cada server function. La opción concreta de SDK/adaptador debe verificarse contra las versiones instaladas y la documentación vigente antes de fijar dependencias.
+
+La integración debe permanecer aditiva: nuevas rutas y módulos; el formulario demostrativo y las rutas actuales siguen intactos. No se debe asumir que el proyecto Lovable está enlazado a la base solo porque la base está habilitada. La conexión efectiva se demostrará con una prueba controlada en entorno aislado antes de cualquier operación de escritura en producción.
+
+Este hallazgo refuerza los bloqueos previos; no se hicieron cambios en la aplicación ni en la base de datos.
