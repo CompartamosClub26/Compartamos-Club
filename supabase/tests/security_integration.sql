@@ -72,6 +72,61 @@ select public.test_assert_true(
   'enviar_revision debe llevar un perfil completo a pendiente'
 );
 
+-- Regression: the permissive legacy ALL policies must not survive migration 0007.
+select public.test_assert_true(
+  not exists (
+    select 1 from pg_catalog.pg_policies
+    where schemaname = 'public'
+      and policyname in ('interests_self_all','goals_self_all')
+  ),
+  'las políticas permisivas heredadas de intereses y objetivos deben eliminarse'
+);
+
+-- A pending member must not insert, update or delete interests/goals.
+do $
+declare
+  v_rows integer;
+begin
+  insert into public.profile_interests(user_id, interes)
+  values ('11111111-1111-4111-8111-111111111111', 'Fotografía');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'ASSERTION FAILED: pending member inserted an interest';
+  end if;
+
+  update public.profile_interests set interes = 'Fotografía'
+   where user_id = '11111111-1111-4111-8111-111111111111'
+     and interes = 'Senderismo';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'ASSERTION FAILED: pending member updated an interest';
+  end if;
+
+  delete from public.profile_interests
+   where user_id = '11111111-1111-4111-8111-111111111111'
+     and interes = 'Senderismo';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'ASSERTION FAILED: pending member deleted an interest';
+  end if;
+
+  insert into public.profile_goals(user_id, objetivo)
+  values ('11111111-1111-4111-8111-111111111111', 'pareja');
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'ASSERTION FAILED: pending member inserted a goal';
+  end if;
+
+  delete from public.profile_goals
+   where user_id = '11111111-1111-4111-8111-111111111111'
+     and objetivo = 'pareja';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'ASSERTION FAILED: pending member deleted a goal';
+  end if;
+end;
+$;
+
 select public.test_expect_error(
   $$update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$$,
   'permission denied'
