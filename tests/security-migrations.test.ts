@@ -9,6 +9,7 @@ describe("Hardening SQL · consentimiento", () => {
   it("revokes direct updates and uses server time for withdrawal", () => {
     const sql = migration("0005_secure_consent_withdrawal.sql");
     expect(sql).toMatch(/revoke update on public\.user_consents from public, anon, authenticated/i);
+    expect(sql).toMatch(/revoke update \(retirado_en\) on public\.user_consents from public, anon, authenticated/i);
     expect(sql).toMatch(/set retirado_en = now\(\)/i);
     expect(sql).toMatch(/and user_id = v_user/i);
     expect(sql).toMatch(/and retirado_en is null/i);
@@ -21,6 +22,80 @@ describe("Hardening SQL · consentimiento", () => {
     expect(sql).not.toMatch(/grant update\s*\(\s*retirado_en\s*\)/i);
     expect(sql).not.toMatch(/create policy consents_self_update/i);
   });
+
+  it("makes consent retirement irreversible and preserves the acceptance record", () => {
+    const sql = migration("0006_consent_retirement_one_way.sql");
+    expect(sql).toMatch(/auth\.uid\(\)\) is distinct from old\.user_id/i);
+    expect(sql).toMatch(/new\.document_id is distinct from old\.document_id/i);
+    expect(sql).toMatch(/new\.aceptado_en is distinct from old\.aceptado_en/i);
+    expect(sql).toMatch(/old\.retirado_en is not null/i);
+    expect(sql).toMatch(/new\.retirado_en := now\(\)/i);
+    expect(sql).toMatch(/before update on public\.user_consents/i);
+  });
+});
+
+describe("Hardening SQL · estados del perfil", () => {
+  it("allows only the documented moderation transitions", () => {
+    const sql = migration("0001_mvp_profiles_consents.sql");
+    expect(sql).toMatch(/p_estado not in \('aprobado','rechazado','suspendido'\)/i);
+    expect(sql).toMatch(/estado = 'pendiente'/i);
+    expect(sql).toMatch(/estado = 'aprobado'/i);
+    expect(sql).toMatch(/and \(\(p_estado in \('aprobado','rechazado'\) and estado = 'pendiente'\)\s+or \(p_estado = 'suspendido' and estado = 'aprobado'\)\)/i);
+    expect(sql).toMatch(/p_user_id = \(select auth\.uid\(\)\)/i);
+    expect(sql).toMatch(/transición de estado no permitida/i);
+  });
+
+
+  it("allows a member to submit only a complete draft or rejected profile", () => {
+    const sql = migration("0009_allow_valid_profile_submission.sql");
+    expect(sql).toMatch(/old\.estado not in \('borrador','rechazado'\) or new\.estado <> 'pendiente'/i);
+    expect(sql).toMatch(/from public\.profile_interests i where i\.user_id = old\.user_id/i);
+    expect(sql).toMatch(/g\.objetivo = 'pareja'/i);
+    expect(sql).toMatch(/count\(distinct cd\.tipo\)/i);
+    expect(sql).toMatch(/new\.enviado_en := now\(\)/i);
+    expect(sql).toMatch(/new\.motivo_estado := null/i);
+    expect(sql).toMatch(/new\.revisado_por := null/i);
+  });
+
+  it("keeps review, verification, ownership and creation fields protected", () => {
+    const sql = migration("0009_allow_valid_profile_submission.sql");
+    expect(sql).toMatch(/new\.creado_en is distinct from old\.creado_en/i);
+    expect(sql).toMatch(/new\.telefono_verificado_en is distinct from old\.telefono_verificado_en/i);
+    expect(sql).toMatch(/new\.metodo_verificacion is distinct from old\.metodo_verificacion/i);
+    expect(sql).toMatch(/new\.user_id is distinct from old\.user_id/i);
+    expect(sql).toMatch(/old\.estado in \('pendiente','suspendido','baja_solicitada'\)/i);
+  });
+
+  it("requires phone verification and all four current consents before approval", () => {
+    const sql = migration("0001_mvp_profiles_consents.sql");
+    expect(sql).toMatch(/p\.telefono_verificado_en is not null/i);
+    expect(sql).toMatch(/count\(distinct cd\.tipo\)/i);
+    expect(sql).toMatch(/\)\s*=\s*4/i);
+  });
+
+  it("allows resubmission only from draft or rejected profiles", () => {
+    const sql = migration("0004_fix_enviar_revision_function.sql");
+    expect(sql).toMatch(/estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/objetivo = 'pareja'/i);
+  });
+
+  it("freezes interests and goals outside draft and rejected states", () => {
+    const sql = migration("0007_lock_approved_profile_taxonomy.sql");
+    expect(sql).toMatch(/interests_self_insert[\s\S]*?estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/interests_self_update[\s\S]*?estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/interests_self_delete[\s\S]*?estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/goals_self_insert[\s\S]*?estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/goals_self_update[\s\S]*?estado in \('borrador','rechazado'\)/i);
+    expect(sql).toMatch(/goals_self_delete[\s\S]*?estado in \('borrador','rechazado'\)/i);
+  });
+
+  it("blocks member edits to personal fields while moderation is pending", () => {
+    const sql = migration("0008_freeze_pending_profile_fields.sql");
+    expect(sql).toMatch(/old\.estado = 'pendiente'[\s\S]*?new\.alias is distinct from old\.alias/i);
+    expect(sql).toMatch(/new\.ciudad is distinct from old\.ciudad/i);
+    expect(sql).toMatch(/new\.rango_edad is distinct from old\.rango_edad/i);
+    expect(sql).toMatch(/el perfil no puede modificarse mientras está en revisión/i);
+  });
 });
 
 describe("Hardening SQL · roles y cola", () => {
@@ -28,6 +103,21 @@ describe("Hardening SQL · roles y cola", () => {
     const sql = migration("0003_permissions_and_moderation_hardening.sql");
     expect(sql).toMatch(/if not private\.is_director\(\) then raise exception 'Acceso denegado'/i);
     expect(sql).toMatch(/security definer set search_path = ''/i);
+  });
+
+
+  it("limits direct profile writes to member-editable columns", () => {
+    const sql = migration("0010_restrict_profile_column_privileges.sql");
+    expect(sql).toMatch(/revoke insert, update on table public\.profiles from public, anon, authenticated/i);
+    expect(sql).toMatch(/grant insert \(user_id, alias, ciudad, rango_edad, estado\)/i);
+    expect(sql).toMatch(/grant update \(alias, ciudad, rango_edad\)/i);
+  });
+
+  it("prevents Director self-edits and excludes their own profile from the queue", () => {
+    const guard = migration("0009_allow_valid_profile_submission.sql");
+    const queue = migration("0011_exclude_director_from_own_queue.sql");
+    expect(guard).toMatch(/v_is_director[\s\S]*?auth\.uid\(\)[\s\S]*?old\.user_id[\s\S]*?v_personal_changed/i);
+    expect(queue).toMatch(/p\.user_id <> \(select auth\.uid\(\)\)/i);
   });
 
   it("keeps technical admin separate from personal profile access", () => {

@@ -1,6 +1,6 @@
 # Plan de pruebas de seguridad — MVP Buscar pareja Bogotá
 
-Estado: plan preparado; **no ejecutado contra una base de datos**.
+Estado: ejecutado en PostgreSQL 16 aislado mediante CI; **pendiente contrastar contra la base Supabase activa**.
 Alcance: validación previa a habilitar usuarios reales.
 
 ## Preparación
@@ -41,3 +41,20 @@ Alcance: validación previa a habilitar usuarios reales.
 - Las pruebas de políticas no se consideran aprobadas por el hecho de que CI de TypeScript esté verde.
 - La autenticación OTP de correo no equivale a verificación telefónica.
 - No cargar datos reales ni habilitar registro público hasta cerrar esta matriz.
+
+## Casos adicionales detectados en revisión de migraciones
+| ID | Actor | Acción | Resultado esperado |
+|---|---|---|---|
+| SEC-16 | Miembro | Enviar perfil borrador con intereses, objetivo pareja y cuatro consentimientos vigentes | Pasa a pendiente; el servidor fija enviado_en y limpia datos de revisión anteriores. |
+| SEC-17 | Miembro | Enviar perfil incompleto o con consentimientos retirados/no vigentes | Rechazado por el trigger y la función. |
+| SEC-18 | Miembro | Intentar pasar directamente de pendiente a aprobado, rechazado o suspendido | Rechazado. |
+| SEC-19 | Miembro | Cambiar alias, ciudad o rango mientras está pendiente, suspendido o con baja solicitada | Rechazado. |
+| SEC-20 | Miembro | Cambiar creado_en, titularidad o campos de verificación | Rechazado. |
+| SEC-21 | Miembro | Editar datos personales de un perfil aprobado | Se devuelve a pendiente y se limpian los datos de revisión anteriores. |
+| SEC-22 | Miembro | Reenviar un perfil rechazado | Solo pasa a pendiente si vuelve a cumplir todos los requisitos; se limpian los datos de revisión anteriores. |
+
+La transición de envío se valida tanto en `public.enviar_revision()` como en el trigger de perfiles. Esto evita que el trigger bloquee el flujo legítimo y evita que una actualización directa eluda los requisitos del envío.
+
+| SEC-23 | Miembro o Director | Intentar actualizar directamente el estado, revisión, verificación o marcas de tiempo del perfil | Rechazado por privilegios de columna; solo RPC autorizadas pueden hacerlo. |
+| SEC-24 | Director | Intentar aprobar su propio perfil por RPC o actualización directa | Rechazado. |
+| SEC-25 | Director | Consultar la cola cuando su propio perfil está pendiente | Su propio perfil no aparece en la cola. |

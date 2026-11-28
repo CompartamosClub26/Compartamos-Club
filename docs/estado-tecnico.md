@@ -7,8 +7,12 @@ Piloto exclusivo: Buscar pareja en Bogotá. No incluye feed, grupos, pagos, publ
 
 ## Código portable en GitHub
 Repositorio: `CompartamosClub26/Compartamos-Club`.
-Rama de trabajo: `work/audit-and-ci-hardening`.
-Solicitud de integración: PR #1, abierta y en borrador. No está integrada en `main`.
+
+Ramas y solicitudes:
+- `work/audit-and-ci-hardening`: PR #1, abierta y en borrador.
+- `work/consent-retirement-hardening`: PR #2, abierta y en borrador; apilada sobre PR #1.
+- `work/integration-security-review`: PR #3, abierta y en borrador; consolida los cambios de seguridad y pruebas sobre la rama de auditoría.
+- `main` permanece intacta; no se ha integrado ninguna de estas ramas.
 
 Módulos preparados:
 - Cliente Supabase de navegador: `src/lib/supabase.ts`.
@@ -16,41 +20,86 @@ Módulos preparados:
 - Componente React de acceso por correo y OTP: `src/components/EmailCodeForm.tsx`.
 - Validación y alta transaccional de perfil: `src/lib/perfil.ts`.
 - Callback de autenticación: `src/lib/auth-callback.ts`.
-- Migraciones SQL 0001 a 0004.
-- Pruebas unitarias iniciales de validación del perfil.
+- Migraciones SQL 0001 a 0011 en la rama de integración.
+- Pruebas unitarias, pruebas de contrato de migraciones y batería SQL de roles/RLS/transiciones.
+- Workflow PostgreSQL aislado para aplicar migraciones en orden y ejecutar regresiones.
 
 El repositorio no contiene el árbol completo de la aplicación Lovable. Los módulos aún no están integrados en rutas reales del sitio.
 
 ## Validación automatizada
-- En la rama de trabajo, el workflow CI del 27-11-2026 terminó en éxito: instalación de dependencias, pruebas y typecheck.
-- En `main`, la ejecución anterior falló durante la instalación de dependencias; las pruebas y el typecheck fueron omitidos.
-- El CI verde valida el conjunto portable aislado; no demuestra integración con la aplicación Lovable ni seguridad real de la base de datos.
-- No se ha ejecutado un build completo del sitio ni una prueba end-to-end con cuentas distintas.
+HEAD validado: `3ddb7710f58eb1a8963a1cd7f2efc989744fb475`.
+- CI de Vitest y TypeScript: éxito.
+- PostgreSQL 16 aislado: éxito; las migraciones 0001–0011 se aplicaron en orden.
+- La batería SQL cubre envío de perfil, privacidad entre miembros, permisos del Director y administrador técnico, auto-moderación, aprobación condicionada, cambios de estado, congelación de datos y retiro irreversible de consentimientos.
+- El entorno de prueba usa un shim mínimo de `auth.uid()`; no sustituye una validación en la instancia Supabase activa.
+- No se ha ejecutado un build completo del sitio ni una prueba end-to-end con cuentas reales.
 
-## Estado de Supabase
-La documentación y las consultas anteriores registran que la migración 0001 fue aplicada a la base vinculada al proyecto Lovable y que existen las siete tablas previstas. La migración 0002 quedó pendiente de aplicación y verificación. Las migraciones 0003 y 0004 están versionadas en la rama de trabajo, pero no se ha confirmado su aplicación en la base activa.
+## Estado de Supabase activo
+La base vinculada al proyecto Lovable está habilitada y usa PostgreSQL/Supabase.
 
-La consulta más reciente volvió a ser rechazada por el límite temporal de acciones de base de datos del plan gratuito. Por tanto, no se debe asumir que las políticas y funciones añadidas en 0002–0004 estén activas.
+Inspección de solo lectura del 27-11-2026:
+- Existen las siete tablas previstas: `public.profiles`, `public.profile_interests`, `public.profile_goals`, `public.consent_documents`, `public.user_consents`, `private.user_roles` y `private.audit_log`.
+- RLS aparece habilitado en las siete tablas.
+- `FORCE ROW LEVEL SECURITY` aparece desactivado en las siete.
+- No se encontró el esquema estándar `supabase_migrations` ni su tabla de historial de migraciones de aplicación. La tabla `auth.schema_migrations`, si se consulta, corresponde al esquema Auth y no debe confundirse con el historial de migraciones de este proyecto.
+- La inspección se detuvo al alcanzarse el límite temporal de consultas de base de datos del plan gratuito. Quedaron pendientes la lectura de políticas efectivas, privilegios de tabla/columna, ACL de funciones y triggers de la instancia activa.
+
+Las consultas anteriores registraron que la migración 0001 fue aplicada y que la 0002 estaba pendiente; esa referencia histórica no sustituye la verificación actual. La existencia de tablas y el indicador RLS habilitado no demuestran qué migraciones, políticas o funciones están activas hoy.
+
+**Ninguna migración 0005–0011 de la rama de integración se ha aplicado a Supabase activo.** No se han ejecutado escrituras ni cambios de esquema en esa base durante esta revisión.
 
 ## Separación de funciones prevista
 - Miembro: opera sobre su propio perfil y consentimientos.
-- Director: consulta una cola reducida mediante función protegida, verifica teléfono y resuelve estados.
+- Director: consulta una cola reducida mediante función protegida, verifica teléfono y resuelve estados; no puede moderar su propio perfil.
 - Administrador técnico: no debe tener lectura de perfiles ni permisos de moderación.
 - No existe un Director sembrado automáticamente. La asignación inicial requiere una operación controlada del propietario después de verificar la identidad.
 
 ## Pendientes bloqueantes antes de registrar usuarios
-1. Revisar las migraciones SQL 0002–0004 y resolver cualquier observación de seguridad antes de aplicarlas.
-2. Aplicar las migraciones pendientes en la base correcta y verificar RLS, GRANT/REVOKE y funciones con sesiones de prueba.
-3. Probar aislamiento entre dos miembros, Director y administrador técnico.
-4. Aprobar textos y versiones jurídicas de condiciones, convivencia, privacidad y mayoría de edad; después generar hashes reales y sembrar los documentos.
-5. Integrar OTP y perfil en rutas reales sin reemplazar ni rediseñar páginas existentes.
-6. Configurar variables públicas de Supabase y plantilla OTP; nunca exponer service_role ni secretos.
-7. Implementar el panel privado del Director y la verificación manual.
-8. Ejecutar pruebas integrales, build y revisión móvil/escritorio.
+1. Reanudar la inspección de solo lectura en Supabase activo cuando vuelva a estar disponible el acceso: políticas RLS, GRANT/REVOKE, privilegios de columna, ACL y definiciones de funciones/triggers.
+2. Determinar el estado real de cada migración en la base activa sin inferirlo por la mera existencia de tablas.
+3. Preparar una secuencia de aplicación compatible con el historial real de Supabase; no aplicar automáticamente las migraciones 0005–0011.
+4. Ejecutar pruebas con sesiones reales aisladas: dos miembros, Director y administrador técnico.
+5. Aprobar textos y versiones jurídicas de condiciones, convivencia, privacidad y mayoría de edad; después generar hashes reales y sembrar los documentos.
+6. Integrar OTP y perfil en rutas reales sin reemplazar ni rediseñar páginas existentes.
+7. Configurar variables públicas de Supabase y plantilla OTP; nunca exponer service_role ni secretos.
+8. Implementar el panel privado del Director y la verificación manual.
+9. Ejecutar pruebas integrales, build y revisión móvil/escritorio.
 
 ## Límites operativos
 - El proyecto Lovable original permanece sin cambios de código desde el 15-11-2026; el intento de usar su agente fue rechazado por saldo de créditos agotado.
-- No se han creado perfiles ni roles privilegiados de prueba.
+- No se han creado perfiles ni roles privilegiados de prueba en Supabase activo.
 - No se han publicado cambios, activado pagos, invitado usuarios ni contactado terceros.
 - No registrar personas reales hasta cerrar las verificaciones de seguridad, autenticación y consentimiento.
 - No almacenar fotos, selfies ni documentos oficiales en esta fase.
+
+
+## Contraste adicional de solo lectura con Supabase activo — 27-11-2026
+
+Se reanudó la inspección mediante consultas de solo lectura. La consulta inicial permitió leer políticas, funciones, triggers y ACL; al continuar, el plan gratuito volvió a bloquear consultas durante 60 minutos. No se ejecutó ningún INSERT, UPDATE, DELETE, DDL ni migración.
+
+### Huella de políticas observada
+
+- `public.profile_interests`: sigue presente la política amplia `interests_self_all` (`FOR ALL`, únicamente `user_id = auth.uid()`).
+- `public.profile_goals`: sigue presente `goals_self_all` con el mismo alcance amplio.
+- `public.profiles`: `profiles_self_insert` solo exige titularidad, estado `borrador` y ciudad Bogotá; `profiles_self_update` permite actualizar la fila propia y depende del trigger para proteger campos.
+- `public.user_consents`: se observaron políticas de SELECT e INSERT propios; no apareció una política de UPDATE.
+- `public.consent_documents`: lectura pública para `anon` y `authenticated`.
+
+Esta huella coincide con las políticas base de 0001 y no con el endurecimiento de 0002/0003/0007. En particular, los intereses y objetivos todavía no están restringidos por estado en la base activa. La migración 0007 de la rama de integración corrige ese comportamiento después de aplicar la secuencia previa; no se debe ejecutar aislada.
+
+### Funciones, triggers y roles
+
+- Se observaron las cuatro funciones públicas `enviar_revision`, `marcar_telefono_verificado`, `moderacion_cola` y `resolver_revision` como `SECURITY DEFINER`, con `search_path` vacío.
+- Las cuatro tienen EXECUTE para `authenticated` y no para `anon`; las funciones de moderación comprueban el rol Director internamente.
+- Los triggers activos observados son `profiles_guard_update` y `profiles_audit_status`.
+- `private.user_roles` tiene RLS habilitado y la consulta de asignaciones devolvió cero filas: **no hay Director ni administrador técnico asignado en la base activa**.
+- `private.audit_log` y `private.user_roles` solo mostraron privilegios directos para el propietario PostgreSQL en la consulta ACL realizada.
+- RLS está habilitado en las tablas consultadas; `FORCE ROW LEVEL SECURITY` aparece desactivado.
+
+### Conclusión de seguridad
+
+La base activa no debe recibir miembros todavía. La política amplia de intereses/objetivos permite cambios propios sin comprobar el estado del perfil; el trigger de perfil observado tampoco bloquea cambios de datos personales durante la revisión. Además, no existe un Director asignado para operar la cola de moderación.
+
+La huella observada demuestra que los endurecimientos de 0002 y 0003, y los cambios de 0005–0009 y 0011, no están activos en Supabase. La migración 0004 no puede distinguirse solo por el cuerpo de `enviar_revision`, que conserva el mismo comportamiento observable. La aplicación de 0010 requiere confirmar privilegios detallados de columna, consulta que quedó bloqueada. La ausencia de un historial `supabase_migrations` impide afirmar una secuencia exacta; estas conclusiones se basan en las políticas, funciones y triggers observados, no en asumir el historial.
+
+La consulta adicional quedó bloqueada por el límite temporal del plan gratuito. Quedan pendientes privilegios detallados de tabla/columna, definición completa de ACL y una segunda verificación de triggers/policies cuando se restablezca el acceso. No se modificó la base activa.
