@@ -132,3 +132,16 @@ No portar directamente el módulo portable actual: su cliente usa `@supabase/sup
 La integración debe permanecer aditiva: nuevas rutas y módulos; el formulario demostrativo y las rutas actuales siguen intactos. No se debe asumir que el proyecto Lovable está enlazado a la base solo porque la base está habilitada. La conexión efectiva se demostrará con una prueba controlada en entorno aislado antes de cualquier operación de escritura en producción.
 
 Este hallazgo refuerza los bloqueos previos; no se hicieron cambios en la aplicación ni en la base de datos.
+
+
+### Confirmación con documentación oficial vigente
+
+La guía oficial de Supabase para TanStack Start recomienda instalar `@supabase/supabase-js` y `@supabase/ssr`, crear clientes separados de navegador y servidor, y usar cookies desde el cliente de servidor mediante utilidades de TanStack Start. La documentación de TanStack Start define `createServerFn` como RPC ejecutada en servidor y advierte que cada función que acceda a datos privados debe validar autenticación/autorización dentro del handler o middleware; la protección de ruta por sí sola no es un límite de seguridad.
+
+Fuentes oficiales consultadas el 27-11-2026:
+- https://supabase.com/docs/guides/getting-started/quickstarts/tanstack
+- https://supabase.com/docs/guides/auth/server-side
+- https://tanstack.com/start/latest/docs/framework/react/guide/server-functions
+- https://tanstack.com/start/latest/docs/framework/react/guide/middleware
+
+Nota de riesgo: Supabase indica que `@supabase/ssr` está actualmente en beta y su API puede cambiar. Antes de implementar se fijarán versiones compatibles con el lockfile y se probarán renovación de sesión, expiración, cierre de sesión y cookies en SSR.
