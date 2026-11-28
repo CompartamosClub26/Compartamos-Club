@@ -83,17 +83,18 @@ select public.test_assert_true(
 );
 
 -- A pending member must not insert, update or delete interests/goals.
+-- INSERT is rejected with an RLS exception; UPDATE/DELETE affect zero rows
+-- because the member no longer satisfies the policy's USING predicate.
+select public.test_expect_error(
+  $insert into public.profile_interests(user_id, interes)
+    values ('11111111-1111-4111-8111-111111111111', 'Fotografía')$,
+  'row-level security policy'
+);
+
 do $pending_taxonomy$
 declare
   v_rows integer;
 begin
-  insert into public.profile_interests(user_id, interes)
-  values ('11111111-1111-4111-8111-111111111111', 'Fotografía');
-  get diagnostics v_rows = row_count;
-  if v_rows <> 0 then
-    raise exception 'ASSERTION FAILED: pending member inserted an interest';
-  end if;
-
   update public.profile_interests set interes = 'Fotografía'
    where user_id = '11111111-1111-4111-8111-111111111111'
      and interes = 'Senderismo';
@@ -110,13 +111,6 @@ begin
     raise exception 'ASSERTION FAILED: pending member deleted an interest';
   end if;
 
-  insert into public.profile_goals(user_id, objetivo)
-  values ('11111111-1111-4111-8111-111111111111', 'pareja');
-  get diagnostics v_rows = row_count;
-  if v_rows <> 0 then
-    raise exception 'ASSERTION FAILED: pending member inserted a goal';
-  end if;
-
   delete from public.profile_goals
    where user_id = '11111111-1111-4111-8111-111111111111'
      and objetivo = 'pareja';
@@ -126,6 +120,12 @@ begin
   end if;
 end;
 $pending_taxonomy$;
+
+select public.test_expect_error(
+  $insert into public.profile_goals(user_id, objetivo)
+    values ('11111111-1111-4111-8111-111111111111', 'pareja')$,
+  'row-level security policy'
+);
 
 select public.test_expect_error(
   $$update public.profiles set estado = 'aprobado' where user_id = '11111111-1111-4111-8111-111111111111'$$,
